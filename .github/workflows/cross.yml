@@ -31,33 +31,33 @@ jobs:
           cat <<EOF > Dockerfile.cross
           FROM alpine:latest
 
-          RUN apk add --no-cache \
-              build-base \
-              linux-headers \
-              curl \
-              tar \
-              xz \
-              gmp-dev \
-              mpc-dev \
-              mpfr-dev \
-              libffi-dev \
-              openssl-dev \
-              bzip2-dev \
-              zlib-dev \
+          RUN apk add --no-cache \\
+              build-base \\
+              linux-headers \\
+              curl \\
+              tar \\
+              xz \\
+              gmp-dev \\
+              mpc-dev \\
+              mpfr-dev \\
+              libffi-dev \\
+              openssl-dev \\
+              bzip2-dev \\
+              zlib-dev \\
               # 添加 sqlite, ncurses 和 readline 的 arm-linux-gnueabi 开发库
-              sqlite-dev-arm-linux-gnueabi \
-              ncurses-dev-arm-linux-gnueabi \
-              readline-dev-arm-linux-gnueabi \
+              sqlite-dev-arm-linux-gnueabi \\
+              ncurses-dev-arm-linux-gnueabi \\
+              readline-dev-arm-linux-gnueabi \\
               # 其他必要的库
-              gdbm-dev \
-              libressl-dev \
-              expat-dev \
-              bluez-dev \
+              gdbm-dev \\
+              libressl-dev \\
+              expat-dev \\
+              bluez-dev \\
               # 交叉编译工具链
-              gcc-arm-linux-gnueabi \
-              g++-arm-linux-gnueabi \
-              binutils-arm-linux-gnueabi \
-              libc-dev-arm-linux-gnueabi \
+              gcc-arm-linux-gnueabi \\
+              g++-arm-linux-gnueabi \\
+              binutils-arm-linux-gnueabi \\
+              libc-dev-arm-linux-gnueabi \\
               # 确保软浮点工具链
               musl-dev-arm-linux-gnueabi
 
