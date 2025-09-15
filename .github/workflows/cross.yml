@@ -1,0 +1,140 @@
+name: Cross-compile Python 3.13.7 for ARMv7l BusyBox
+
+on:
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  cross_compile:
+    runs-on: ubuntu-latest # 在最新的 Ubuntu 运行器上执行
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # 检出仓库代码
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3 # 设置 QEMU 以支持多架构 Docker 镜像
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3 # 设置 Docker Buildx
+
+      - name: Prepare cross-compilation environment
+        id: prepare_env
+        run: |
+          # 定义目标架构和工具链前缀
+          TARGET_ARCH=armv7l-linux-gnueabi
+          HOST_ARCH=arm-linux-gnueabi
+          PYTHON_VERSION=3.13.7
+          # 将 INSTALL_PREFIX 设置为 /，这样 make install DESTDIR=/build 会直接在 /build 下创建 bin, lib 等
+          INSTALL_PREFIX=/ # 容器内的安装路径，最终会打包
+
+          # 创建一个临时的 Dockerfile 来构建交叉编译环境
+          cat <<EOF > Dockerfile.cross
+          FROM alpine:latest
+
+          RUN apk add --no-cache \
+              build-base \
+              linux-headers \
+              curl \
+              tar \
+              xz \
+              gmp-dev \
+              mpc-dev \
+              mpfr-dev \
+              libffi-dev \
+              openssl-dev \
+              bzip2-dev \
+              zlib-dev \
+              # 添加 sqlite, ncurses 和 readline 的 arm-linux-gnueabi 开发库
+              sqlite-dev-arm-linux-gnueabi \
+              ncurses-dev-arm-linux-gnueabi \
+              readline-dev-arm-linux-gnueabi \
+              # 其他必要的库
+              gdbm-dev \
+              libressl-dev \
+              expat-dev \
+              bluez-dev \
+              # 交叉编译工具链
+              gcc-arm-linux-gnueabi \
+              g++-arm-linux-gnueabi \
+              binutils-arm-linux-gnueabi \
+              libc-dev-arm-linux-gnueabi \
+              # 确保软浮点工具链
+              musl-dev-arm-linux-gnueabi
+
+          # 创建一个软链接，确保交叉编译工具链的路径正确
+          RUN ln -s /usr/arm-linux-gnueabi/bin/ld /usr/arm-linux-gnueabi/bin/ld.bfd
+
+          # 设置环境变量，方便后续编译
+          ENV PATH="/usr/arm-linux-gnueabi/bin:$PATH"
+          ENV CC="${HOST_ARCH}-gcc"
+          ENV CXX="${HOST_ARCH}-g++"
+          ENV AR="${HOST_ARCH}-ar"
+          ENV RANLIB="${HOST_ARCH}-ranlib"
+          ENV LD="${HOST_ARCH}-ld"
+          ENV READELF="${HOST_ARCH}-readelf"
+          ENV STRIP="${HOST_ARCH}-strip"
+          ENV CFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16"
+          ENV CXXFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16"
+          ENV LDFLAGS="-Wl,-rpath-link=/usr/arm-linux-gnueabi/lib"
+          EOF
+
+          # 构建 Docker 镜像
+          docker build -t cross-compile-python -f Dockerfile.cross .
+
+          echo "PYTHON_VERSION=${PYTHON_VERSION}" >> $GITHUB_OUTPUT
+          echo "INSTALL_PREFIX=${INSTALL_PREFIX}" >> $GITHUB_OUTPUT
+          echo "HOST_ARCH=${HOST_ARCH}" >> $GITHUB_OUTPUT
+          echo "TARGET_ARCH=${TARGET_ARCH}" >> $GITHUB_OUTPUT
+
+      - name: Download Python source
+        run: |
+          PYTHON_VERSION=${{ steps.prepare_env.outputs.PYTHON_VERSION }}
+          curl -LO "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz"
+          tar -xf "Python-${PYTHON_VERSION}.tar.xz"
+
+      - name: Cross-compile Python
+        run: |
+          PYTHON_VERSION=${{ steps.prepare_env.outputs.PYTHON_VERSION }}
+          INSTALL_PREFIX=${{ steps.prepare_env.outputs.INSTALL_PREFIX }}
+          HOST_ARCH=${{ steps.prepare_env.outputs.HOST_ARCH }}
+          TARGET_ARCH=${{ steps.prepare_env.outputs.TARGET_ARCH }}
+
+          docker run --platform linux/arm/v7 \
+            -v "$(pwd)/Python-${PYTHON_VERSION}:/src" \
+            -v "$(pwd)/build:/build" \
+            cross-compile-python /bin/sh -c "
+            cd /src && \
+            ./configure \
+              --host=${HOST_ARCH} \
+              --build=x86_64-alpine-linux-musl \
+              --prefix=${INSTALL_PREFIX} \
+              --disable-shared \
+              --with-build-python=yes \
+              ac_cv_file__dev_ptmx=no \
+              ac_cv_file__dev_ptc=no \
+              --without-gdbm \
+              --without-tcl \
+              --without-tk \
+              # 针对 BusyBox 的一些特殊处理
+              LDFLAGS='-static -Wl,-rpath-link=/usr/arm-linux-gnueabi/lib' \
+              CPPFLAGS='-I/usr/arm-linux-gnueabi/include' \
+              CFLAGS='-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16' \
+              CXXFLAGS='-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16' && \
+            make -j$(nproc) && \
+            make install DESTDIR=/build
+            "
+
+      - name: Package compiled Python
+        run: |
+          PYTHON_VERSION=${{ steps.prepare_env.outputs.PYTHON_VERSION }}
+          # 将 /build 目录下的所有内容打包
+          cd build
+          tar -czvf "python-${PYTHON_VERSION}-armv7l-busybox.tar.gz" .
+          mv "python-${PYTHON_VERSION}-armv7l-busybox.tar.gz" ../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-${{ steps.prepare_env.outputs.PYTHON_VERSION }}-armv7l-busybox
+          path: python-${{ steps.prepare_env.outputs.PYTHON_VERSION }}-armv7l-busybox.tar.gz
+          retention-days: 7 # 保留 7 天
