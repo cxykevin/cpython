@@ -50,15 +50,16 @@ jobs:
               libreadline-dev \\
               # 其他库
               libgdbm-dev \\
-              libexpat-dev \\
+              libexpat1-dev \\ # Ubuntu 上的 expat 开发库
               libbluetooth-dev \\
               # 交叉编译工具链 (arm-linux-gnueabi 用于软浮点)
               gcc-arm-linux-gnueabi \\
               g++-arm-linux-gnueabi \\
               binutils-arm-linux-gnueabi \\
-              libc6-dev-arm-cross \\
+              libc6-dev-armel-cross \\ # 修正为 armel 交叉编译 C 库开发包
               # 确保所有依赖都安装
-              pkg-config
+              pkg-config && \\
+              rm -rf /var/lib/apt/lists/* # 清理 apt 缓存以减小镜像大小
 
           # 设置环境变量，方便后续编译
           ENV PATH="/usr/arm-linux-gnueabi/bin:$PATH"
