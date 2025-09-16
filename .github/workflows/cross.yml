@@ -44,11 +44,11 @@ jobs:
               mpc-dev \\
               mpfr-dev \\
               # 交叉编译工具链和目标侧的开发库 (musl-based)
-              # 注意：Alpine 的交叉编译包通常以目标三元组开头
               arm-linux-gnueabi-gcc \\
               arm-linux-gnueabi-g++ \\
               arm-linux-gnueabi-binutils \\
-              arm-linux-gnueabi-musl-dev \\ # 针对 arm-linux-gnueabi 的 musl 开发库
+              # 针对 arm-linux-gnueabi 的 musl 开发库
+              arm-linux-gnueabi-musl-dev \\
               arm-linux-gnueabi-libffi-dev \\
               arm-linux-gnueabi-openssl-dev \\
               arm-linux-gnueabi-bzip2-dev \\
@@ -59,7 +59,8 @@ jobs:
               arm-linux-gnueabi-gdbm-dev \\
               arm-linux-gnueabi-expat-dev \\
               arm-linux-gnueabi-bluez-dev \\
-              pkgconf # Alpine 使用 pkgconf 而不是 pkg-config
+              # Alpine 使用 pkgconf 而不是 pkg-config
+              pkgconf
 
           # 设置环境变量，方便后续编译
           ENV PATH="/usr/arm-linux-gnueabi/bin:$PATH"
@@ -72,7 +73,6 @@ jobs:
           ENV STRIP="arm-linux-gnueabi-strip"
 
           # CFLAGS/LDFLAGS for static linking against musl
-          # --sysroot 通常由 Alpine 的交叉工具链隐式处理，但明确设置有助于确保
           ENV CFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi"
           ENV CXXFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi"
           # -static 是关键，确保所有库都静态链接
@@ -117,7 +117,6 @@ jobs:
               --without-tcl \
               --without-tk \
               # 针对 BusyBox 的一些特殊处理
-              # 确保 LDFLAGS 包含 -static
               LDFLAGS='-static -Wl,-rpath-link=/usr/arm-linux-gnueabi/lib --sysroot=/usr/arm-linux-gnueabi' \
               CPPFLAGS='-I/usr/arm-linux-gnueabi/include --sysroot=/usr/arm-linux-gnueabi' \
               CFLAGS='-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi' \
