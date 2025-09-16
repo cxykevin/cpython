@@ -1,7 +1,9 @@
-name: Cross-compile Python 3.13.7 for ARMv7l BusyBox
+name: Cross-compile Python 3.13.7 for ARMv7l BusyBox (Musl Static)
 
 on:
-  workflow_dispatch: # 允许手动触发
+  push: # 在每次推送到仓库时触发
+    branches: [ main, master ] # 可以指定触发的分支，例如 main 或 master
+  workflow_dispatch: # 仍然保留手动触发选项
 
 jobs:
   cross_compile:
@@ -28,38 +30,36 @@ jobs:
 
           # 创建一个临时的 Dockerfile 来构建交叉编译环境
           cat <<EOF > Dockerfile.cross
-          FROM ubuntu:latest
+          FROM alpine:latest
 
           # 更新包列表并安装必要的工具和交叉编译工具链
-          RUN apt-get update && apt-get install -y --no-install-recommends \\
-              build-essential \\
+          RUN apk add --no-cache \\
+              build-base \\
+              linux-headers \\
               curl \\
               tar \\
-              xz-utils \\
-              # Python 编译依赖
-              libgmp-dev \\
-              libmpc-dev \\
-              libmpfr-dev \\
-              libffi-dev \\
-              libssl-dev \\
-              libbz2-dev \\
-              zlib1g-dev \\
-              # 用户要求的模块依赖
-              libsqlite3-dev \\
-              libncurses-dev \\
-              libreadline-dev \\
-              # 其他库
-              libgdbm-dev \\
-              libexpat1-dev \\ # Ubuntu 上的 expat 开发库
-              libbluetooth-dev \\
-              # 交叉编译工具链 (arm-linux-gnueabi 用于软浮点)
-              gcc-arm-linux-gnueabi \\
-              g++-arm-linux-gnueabi \\
-              binutils-arm-linux-gnueabi \\
-              libc6-dev-armel-cross \\ # 修正为 armel 交叉编译 C 库开发包
-              # 确保所有依赖都安装
-              pkg-config && \\
-              rm -rf /var/lib/apt/lists/* # 清理 apt 缓存以减小镜像大小
+              xz \\
+              # Python 编译依赖 (宿主机侧的，例如用于 configure 脚本)
+              gmp-dev \\
+              mpc-dev \\
+              mpfr-dev \\
+              # 交叉编译工具链和目标侧的开发库 (musl-based)
+              # 注意：Alpine 的交叉编译包通常以目标三元组开头
+              arm-linux-gnueabi-gcc \\
+              arm-linux-gnueabi-g++ \\
+              arm-linux-gnueabi-binutils \\
+              arm-linux-gnueabi-musl-dev \\ # 针对 arm-linux-gnueabi 的 musl 开发库
+              arm-linux-gnueabi-libffi-dev \\
+              arm-linux-gnueabi-openssl-dev \\
+              arm-linux-gnueabi-bzip2-dev \\
+              arm-linux-gnueabi-zlib-dev \\
+              arm-linux-gnueabi-sqlite-dev \\
+              arm-linux-gnueabi-ncurses-dev \\
+              arm-linux-gnueabi-readline-dev \\
+              arm-linux-gnueabi-gdbm-dev \\
+              arm-linux-gnueabi-expat-dev \\
+              arm-linux-gnueabi-bluez-dev \\
+              pkgconf # Alpine 使用 pkgconf 而不是 pkg-config
 
           # 设置环境变量，方便后续编译
           ENV PATH="/usr/arm-linux-gnueabi/bin:$PATH"
@@ -70,10 +70,13 @@ jobs:
           ENV LD="arm-linux-gnueabi-ld"
           ENV READELF="arm-linux-gnueabi-readelf"
           ENV STRIP="arm-linux-gnueabi-strip"
-          # 添加 --sysroot 指向目标系统的根目录，这是交叉编译的关键
+
+          # CFLAGS/LDFLAGS for static linking against musl
+          # --sysroot 通常由 Alpine 的交叉工具链隐式处理，但明确设置有助于确保
           ENV CFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi"
           ENV CXXFLAGS="-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi"
-          ENV LDFLAGS="-Wl,-rpath-link=/usr/arm-linux-gnueabi/lib -static --sysroot=/usr/arm-linux-gnueabi"
+          # -static 是关键，确保所有库都静态链接
+          ENV LDFLAGS="-static -Wl,-rpath-link=/usr/arm-linux-gnueabi/lib --sysroot=/usr/arm-linux-gnueabi"
           EOF
 
           # 构建 Docker 镜像
@@ -104,7 +107,7 @@ jobs:
             cd /src && \
             ./configure \
               --host=${HOST_ARCH} \
-              --build=x86_64-linux-gnu \
+              --build=x86_64-alpine-linux-musl \
               --prefix=${INSTALL_PREFIX} \
               --disable-shared \
               --with-build-python=yes \
@@ -114,6 +117,7 @@ jobs:
               --without-tcl \
               --without-tk \
               # 针对 BusyBox 的一些特殊处理
+              # 确保 LDFLAGS 包含 -static
               LDFLAGS='-static -Wl,-rpath-link=/usr/arm-linux-gnueabi/lib --sysroot=/usr/arm-linux-gnueabi' \
               CPPFLAGS='-I/usr/arm-linux-gnueabi/include --sysroot=/usr/arm-linux-gnueabi' \
               CFLAGS='-Os -mfloat-abi=softfp -march=armv7-a -mfpu=vfpv3-d16 --sysroot=/usr/arm-linux-gnueabi' \
